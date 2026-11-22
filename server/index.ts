@@ -16,6 +16,7 @@ await query(`CREATE TABLE IF NOT EXISTS characters (id SERIAL PRIMARY KEY, accou
 const sessions=new Map<string,number>();
 type Player=Character & {accountId:number; socket:WebSocket; dx:number; dz:number; lastInput:number; cooldown:number; saveQueue:Promise<void>};
 const players=new Map<number,Player>();
+const lastChat = new Map<number,number>();
 const monster={id:1,x:3,z:-4,hp:50,maxHp:50,alive:true,respawn:0,lastAttack:0};
 const resource={id:1,x:-4,z:-4,available:true,respawn:0};
 const json=(res:import('node:http').ServerResponse,status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -43,12 +44,19 @@ wss.on('connection',socket=>{let p:Player|undefined;let joining=false;const time
   if(!p){if(joining)return;if(msg.type!=='join'||typeof msg.token!=='string')return socket.close(1008,'Unauthorized');joining=true;const accountId=sessions.get(msg.token);sessions.delete(msg.token);if(!accountId||[...players.values()].some(v=>v.accountId===accountId))return socket.close(1008,'중복 접속 또는 만료된 세션');let [row]=await query('SELECT * FROM characters WHERE account_id=$1',[accountId]);if(!row){const name=typeof msg.name==='string'?msg.name.trim():'';if(!/^[가-힣a-zA-Z0-9_]{2,16}$/.test(name)){socket.send(JSON.stringify({type:'joinError',message:'캐릭터 이름은 한글, 영문, 숫자, 밑줄 2~16자로 입력하세요.'}));return socket.close();}try{[row]=await query('INSERT INTO characters (account_id,name) VALUES ($1,$2) RETURNING *',[accountId,name]);}catch(e:any){socket.send(JSON.stringify({type:'joinError',message:e.code==='23505'?'이미 사용 중인 캐릭터 이름입니다.':'캐릭터 생성에 실패했습니다.'}));return socket.close();}}
   if(socket.readyState!==WebSocket.OPEN||[...players.values()].some(v=>v.accountId===accountId))return socket.close();const inventory:Inventory=JSON.parse(row.inventory);p={id:row.id,accountId,name:row.name,x:row.x,z:row.z,level:row.level,xp:row.xp,hp:row.hp,mp:row.mp,inventory,dx:0,dz:0,lastInput:Date.now(),cooldown:0,socket,saveQueue:Promise.resolve()};players.set(p.id,p);clearTimeout(timeout);return send(p,{type:'welcome',id:p.id});}
   if(msg.type==='move'&&Number.isFinite(msg.dx)&&Number.isFinite(msg.dz)){const len=Math.hypot(msg.dx,msg.dz);if(!Number.isFinite(len))return;p.dx=len>1?msg.dx/len:msg.dx;p.dz=len>1?msg.dz/len:msg.dz;p.lastInput=Date.now();}
+  if(msg.type==='chat'){
+   if(typeof msg.text!=='string')return notice(p,'올바른 메시지를 입력하세요.');
+   const text=msg.text.replace(/[\u0000-\u001f\u007f]/g,' ').trim();
+   if(!text||text.length>120)return notice(p,'채팅은 1~120자로 입력하세요.');
+   const now=Date.now();if(now-(lastChat.get(p.id)||0)<1000)return notice(p,'채팅은 1초에 한 번 보낼 수 있습니다.');
+   lastChat.set(p.id,now);const message={type:'chat',name:p.name,text};for(const other of players.values())send(other,message);
+  }
   if(msg.type==='attack'||msg.type==='skill'){const now=Date.now();if(now<p.cooldown)return notice(p,'아직 사용할 수 없습니다.');if(msg.type==='skill'&&p.mp<10)return notice(p,'마나가 부족합니다.');if(!monster.alive||Math.hypot(p.x-monster.x,p.z-monster.z)>4)return notice(p,'공격할 몬스터가 근처에 없습니다.');p.cooldown=now+(msg.type==='skill'?2500:800);if(msg.type==='skill')p.mp-=10;monster.hp-=msg.type==='skill'?25:(p.inventory.equipped?20:10);if(monster.hp<=0){monster.hp=0;monster.alive=false;monster.respawn=now+8000;p.xp+=20;while(p.xp>=p.level*XP_PER_LEVEL){p.xp-=p.level*XP_PER_LEVEL;p.level++;notice(p,`레벨 ${p.level} 달성!`);}notice(p,'몬스터 처치: 경험치 20');}else notice(p,'공격 성공');void save(p);}
   if(msg.type==='gather'){if(!resource.available||Math.hypot(p.x-resource.x,p.z-resource.z)>3)return notice(p,'채집할 나무가 근처에 없거나 재생 중입니다.');resource.available=false;resource.respawn=Date.now()+10000;p.inventory.wood++;notice(p,'나무 +1');void save(p);}
   if(msg.type==='craft'){if(p.inventory.wood<2)return notice(p,'제작에는 나무 2개가 필요합니다.');p.inventory.wood-=2;p.inventory.sword++;notice(p,'나무 검 제작 완료');void save(p);}
   if(msg.type==='equip'){if(p.inventory.sword<1)return notice(p,'착용할 나무 검이 없습니다.');p.inventory.equipped=!p.inventory.equipped;notice(p,p.inventory.equipped?'나무 검 착용':'나무 검 해제');void save(p);}
  }catch(e){console.error(e);socket.close(1003,'Invalid message');}});
- socket.on('close',()=>{clearTimeout(timeout);if(p&&players.get(p.id)===p){players.delete(p.id);void save(p);}});
+ socket.on('close',()=>{clearTimeout(timeout);if(p&&players.get(p.id)===p){players.delete(p.id);lastChat.delete(p.id);void save(p);}});
 });
 setInterval(()=>{const now=Date.now();if(!monster.alive&&now>=monster.respawn){monster.alive=true;monster.hp=monster.maxHp;}if(!resource.available&&now>=resource.respawn)resource.available=true;
  for(const p of players.values()){if(now-p.lastInput>500)p.dx=p.dz=0;const x=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.x+p.dx*.2)),z=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.z+p.dz*.2));if(Math.hypot(x-OBSTACLE.x,z-OBSTACLE.z)>OBSTACLE.radius){p.x=x;p.z=z;}}
