@@ -1,4 +1,4 @@
-export type Inventory = { wood: number; herb: number; ore: number; armor: number; armorEquipped: boolean; sword: number; potion: number; equipped: boolean; quest: string; questProgress: number; battleQuest: string; battleProgress: number; repeatQuest: string; repeatProgress: number; color: string; hair: string; face: string; gold: number; craftXp: number; storage: {wood:number; herb:number; ore:number; sword:number; potion:number; armor:number} };
+export type Inventory = { wood: number; herb: number; ore: number; armor: number; armorEquipped: boolean; sword: number; potion: number; equipped: boolean; quest: string; questProgress: number; battleQuest: string; battleProgress: number; repeatQuest: string; repeatProgress: number; role: string; color: string; hair: string; face: string; gold: number; craftXp: number; storage: {wood:number; herb:number; ore:number; sword:number; potion:number; armor:number} };
 export type Character = { id: number; name: string; x: number; z: number; level: number; xp: number; hp: number; mp: number; inventory: Inventory };
 export const MAX_HP = 100;
 export const MAX_MP = 50;
