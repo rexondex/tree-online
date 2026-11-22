@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { adminPage } from './admin/page.js';
+import { stepMonster, resetMonster, type MonsterState } from './game/monster.js';
 import { TrialDungeon } from './game/dungeon.js';
 import { Friends } from './game/friends.js';
 import { PartyManager } from './game/party.js';
@@ -52,7 +53,7 @@ const lastPasswordAttempt = new Map<number,number>();
 const blockedPlayers = new Map<number,Set<number>>();
 let storageErrors=0;
 const combatParticipants = new Set<number>();
-const monster={id:1,x:3,z:-4,hp:50,maxHp:50,alive:true,respawn:0,lastAttack:0};
+const monster:MonsterState & {id:number;hp:number;maxHp:number;respawn:number}={id:1,x:3,z:-4,hp:50,maxHp:50,alive:true,respawn:0,lastAttack:0,mode:'idle',targetId:null,windupUntil:0};
 const resource={id:1,x:-4,z:-4,available:true,respawn:0};
 const herb={id:2,x:-8,z:2,available:true,respawn:0};
 const ore={id:3,x:7,z:1,available:true,respawn:0};
@@ -162,9 +163,9 @@ wss.on('connection',socket=>{let p:Player|undefined;let joining=false;const time
  }catch(e){console.error(e);socket.close(1003,'Invalid message');}});
  socket.on('close',()=>{clearTimeout(timeout);if(p&&players.get(p.id)===p){parties.disconnect(p.id,!p.deleted&&!p.leaving);friends.disconnect(p.id);players.delete(p.id);void friends.notifyPeers(p.id).catch(console.error);for(const other of players.values())notice(other,p.name+' 님이 퇴장했습니다.');lastChat.delete(p.id);lastEscape.delete(p.id);blockedPlayers.delete(p.id);const accountId=p.accountId;const disconnected=p;const pending=disconnected.pendingAction.then(()=>(disconnected.uncertain||disconnected.deleted)?undefined:save(disconnected)).then(()=>{if(disconnected.uncertain||disconnected.deleted)failedDisconnectSaves.delete(accountId);else if(disconnected.saveFailed)failedDisconnectSaves.set(accountId,disconnected);else failedDisconnectSaves.delete(accountId);});pendingDisconnectSaves.set(accountId,pending);void pending.finally(()=>{if(pendingDisconnectSaves.get(accountId)===pending)pendingDisconnectSaves.delete(accountId);});}});
 });
-setInterval(()=>{const now=Date.now();if(!monster.alive&&now>=monster.respawn){monster.alive=true;monster.hp=monster.maxHp;}if(!resource.available&&now>=resource.respawn)resource.available=true;for(const node of [herb,ore])if(!node.available&&now>=node.respawn)node.available=true;
+setInterval(()=>{const now=Date.now();if(!monster.alive&&now>=monster.respawn){monster.alive=true;monster.hp=monster.maxHp;resetMonster(monster);}if(!resource.available&&now>=resource.respawn)resource.available=true;for(const node of [herb,ore])if(!node.available&&now>=node.respawn)node.available=true;
  for(const p of players.values()){if(p.busy)continue;if(now-p.lastInput>500)p.dx=p.dz=0;const x=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.x+p.dx*.2)),z=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.z+p.dz*.2));if(Math.hypot(x-OBSTACLE.x,z-OBSTACLE.z)>OBSTACLE.radius){p.x=x;p.z=z;}}
- if(monster.alive&&now-monster.lastAttack>2000){const target=[...players.values()].find(p=>!p.busy&&p.hp>0&&Math.hypot(p.x,p.z)>2.5&&Math.hypot(p.x-monster.x,p.z-monster.z)<2);if(target){monster.lastAttack=now;const damage=target.inventory.armorEquipped?10:15;target.hp-=damage;if(target.hp<=0){target.hp=0;target.dx=0;target.dz=0;notice(target,'쓰러졌습니다. 시작 지점 부활을 선택하세요.');}else notice(target,'몬스터에게 피해 '+damage+'를 입었습니다.');void save(target);}}
+ const target=stepMonster(monster,players.values(),now);if(target){const damage=target.inventory.armorEquipped?10:15;target.hp-=damage;if(target.hp<=0){target.hp=0;target.dx=0;target.dz=0;notice(target,'쓰러졌습니다. 시작 지점 부활을 선택하세요.');}else notice(target,'몬스터에게 피해 '+damage+'를 입었습니다.');void save(target);}
 },50);
 setInterval(()=>{for(const p of players.values()){if(!p.busy&&p.hp>0&&p.mp<MAX_MP){p.mp=Math.min(MAX_MP,p.mp+1);send(p,{type:'recovery',resource:'mp',amount:1});}} },3000);
 setInterval(()=>{const state=JSON.stringify({type:'state',players:[...players.values()].map(({id,name,x,z,level,xp,hp,mp,inventory,cooldown})=>({id,name,x,z,level,xp,hp,mp,inventory,cooldownRemaining:Math.max(0,cooldown-Date.now())})),monster:{...monster,participantCount:combatParticipants.size},resource:{...resource,remaining:Math.max(0,resource.respawn-Date.now())},herb:{...herb,remaining:Math.max(0,herb.respawn-Date.now())},ore:{...ore,remaining:Math.max(0,ore.respawn-Date.now())}});for(const p of players.values())if(p.socket.readyState===WebSocket.OPEN){p.socket.send(state);send(p,{type:'partyState',party:parties.snapshot(p.id)});send(p,{type:'dungeonState',dungeon:dungeon.snapshot(p.id)});}},100);
