@@ -63,6 +63,6 @@ setInterval(()=>{const now=Date.now();if(!monster.alive&&now>=monster.respawn){m
  if(monster.alive&&now-monster.lastAttack>2000){const target=[...players.values()].find(p=>Math.hypot(p.x-monster.x,p.z-monster.z)<2);if(target){monster.lastAttack=now;target.hp-=15;if(target.hp<=0){target.hp=MAX_HP;target.mp=MAX_MP;target.x=0;target.z=0;notice(target,'쓰러져서 시작 지점에서 부활했습니다.');}else notice(target,'몬스터에게 피해를 입었습니다.');void save(target);}}
 },50);
 setInterval(()=>{for(const p of players.values()){p.mp=Math.min(MAX_MP,p.mp+1);} },3000);
-setInterval(()=>{const state=JSON.stringify({type:'state',players:[...players.values()].map(({id,name,x,z,level,xp,hp,mp,inventory})=>({id,name,x,z,level,xp,hp,mp,inventory})),monster,resource});for(const p of players.values())if(p.socket.readyState===WebSocket.OPEN)p.socket.send(state);},100);
+setInterval(()=>{const state=JSON.stringify({type:'state',players:[...players.values()].map(({id,name,x,z,level,xp,hp,mp,inventory,cooldown})=>({id,name,x,z,level,xp,hp,mp,inventory,cooldownRemaining:Math.max(0,cooldown-Date.now())})),monster,resource});for(const p of players.values())if(p.socket.readyState===WebSocket.OPEN)p.socket.send(state);},100);
 setInterval(()=>{for(const p of players.values())void save(p);},15000);
 server.listen(port,host,()=>console.log(`Server: http://${host}:${port} (${process.env.DATABASE_URL?'PostgreSQL':'local PGlite'})`));
