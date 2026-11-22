@@ -1,4 +1,4 @@
-﻿export type Inventory = { wood: number; sword: number; equipped: boolean };
+export type Inventory = { wood: number; sword: number; potion: number; equipped: boolean };
 export type Character = { id: number; name: string; x: number; z: number; level: number; xp: number; hp: number; mp: number; inventory: Inventory };
 export const MAX_HP = 100;
 export const MAX_MP = 50;
