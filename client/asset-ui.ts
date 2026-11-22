@@ -34,6 +34,8 @@ export function renderInventory(items: Array<{name:string;count:number}>): void 
     image.style.backgroundImage = `url("${assets}items/inventory-atlas.png")`;
     image.style.backgroundPosition = `${column*50}% ${row*100}%`;
     const caption = document.createElement('span');caption.textContent = `${item.name} ${item.count}`;
+    const itemId:Record<string,string>={'회복 물약':'potion','나무 검':'sword','광물 갑옷':'armor'};
+    if(item.count>0&&itemId[item.name]){cell.draggable=true;cell.title='퀵슬롯으로 끌어다 놓으세요';cell.addEventListener('dragstart',event=>{event.dataTransfer?.setData('application/x-rpg-item',itemId[item.name]);event.dataTransfer?.setData('text/plain','rpg-item:'+itemId[item.name]);if(event.dataTransfer)event.dataTransfer.effectAllowed='copy';});}
     cell.append(image, caption);container.append(cell);
   }
 }

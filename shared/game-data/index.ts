@@ -5,6 +5,8 @@ export const MAX_HP = 100;
 export const MAX_MP = 50;
 export const XP_PER_LEVEL = 30;
 export const WORLD_LIMIT = 48;
+export const MONSTER_ZONE = { x:22, z:-20, radius:9 } as const;
+export function inMonsterZone(x:number,z:number):boolean {return Math.hypot(x-MONSTER_ZONE.x,z-MONSTER_ZONE.z)<=MONSTER_ZONE.radius;}
 export const OBSTACLE = { x: 4, z: 4, radius: 1.5 };
 export const ASSETS = { player: 'primitive:player', monster: 'primitive:monster', tree: 'primitive:tree', sword: 'primitive:sword', skill: 'primitive:magic' } as const;
 

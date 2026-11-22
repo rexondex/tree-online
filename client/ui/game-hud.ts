@@ -1,11 +1,12 @@
-import { heroRole } from '../../shared/game-data/heroes';
+import { HEROES, heroRole } from '../../shared/game-data/heroes';
 
 export function installGameHud(): void {
   const game=document.querySelector<HTMLElement>('#game')!;
   const hud=document.querySelector<HTMLElement>('.hud')!;
   const bars=document.createElement('div');bars.className='status-bars';
-  bars.innerHTML='<div class="status-track hp"><span id="hudHpBar"></span><b id="hudHpText"></b></div><div class="status-track mp"><span id="hudMpBar"></span><b id="hudMpText"></b></div>';
+  bars.innerHTML='<div class="status-track hp"><span id="hudHpBar"></span><b id="hudHpText"></b></div><div class="status-track mp"><span id="hudMpBar"></span><b id="hudMpText"></b></div><div class="status-track xp"><span id="hudXpBar"></span><b id="hudXpText"></b></div>';
   hud.insertBefore(bars,document.querySelector('#logout'));
+  const identity=document.createElement('div');identity.className='hud-identity';identity.innerHTML='<strong id="hudName"></strong><span id="hudClass"></span>';hud.insertBefore(identity,bars);
   const portrait=document.createElement('img');portrait.id='hudPortrait';portrait.className='hud-portrait';portrait.alt='';hud.prepend(portrait);
   const menu=document.createElement('nav');menu.className='game-menu';menu.setAttribute('aria-label','게임 메뉴');
   for(const [label,selector,icon] of [['가방·의뢰','.info','▣'],['파티','.party','♟'],['친구','.friends','♥'],['시련','.dungeon','⚔'],['설정','.settings','⚙'],['도움말','.help','?']] as const){
@@ -21,9 +22,11 @@ export function installGameHud(): void {
   const chatToggle=document.querySelector<HTMLButtonElement>('#chatToggle')!;chatToggle.textContent='채팅 열기';chatToggle.setAttribute('aria-expanded','false');
 }
 
-export function updateGameHud(hp:number,mp:number,maxHp:number,maxMp:number,role:unknown):void {
+export function updateGameHud(hp:number,mp:number,maxHp:number,maxMp:number,role:unknown,name:string,level:number,xp:number,xpMax:number):void {
   const hpBar=document.querySelector<HTMLElement>('#hudHpBar')!,mpBar=document.querySelector<HTMLElement>('#hudMpBar')!;
   hpBar.style.width=`${Math.max(0,Math.min(100,hp/maxHp*100))}%`;mpBar.style.width=`${Math.max(0,Math.min(100,mp/maxMp*100))}%`;
   document.querySelector('#hudHpText')!.textContent=`HP ${hp} / ${maxHp}`;document.querySelector('#hudMpText')!.textContent=`MP ${mp} / ${maxMp}`;
+  document.querySelector<HTMLElement>('#hudXpBar')!.style.width=`${Math.max(0,Math.min(100,xp/xpMax*100))}%`;document.querySelector('#hudXpText')!.textContent=`EXP ${xp} / ${xpMax}`;
+  document.querySelector('#hudName')!.textContent=name;document.querySelector('#hudClass')!.textContent=`Lv.${level} · ${HEROES[heroRole(role)].className}`;
   const portrait=document.querySelector<HTMLImageElement>('#hudPortrait')!,src=`${import.meta.env.BASE_URL}assets/characters/illustrations/${heroRole(role)}-sd.png`;if(portrait.getAttribute('src')!==src)portrait.src=src;
 }
