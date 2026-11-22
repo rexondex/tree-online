@@ -17,6 +17,7 @@ const sessions=new Map<string,number>();
 type Player=Character & {accountId:number; socket:WebSocket; dx:number; dz:number; lastInput:number; cooldown:number; saveQueue:Promise<void>};
 const players=new Map<number,Player>();
 const lastChat = new Map<number,number>();
+const lastEscape = new Map<number,number>();
 const monster={id:1,x:3,z:-4,hp:50,maxHp:50,alive:true,respawn:0,lastAttack:0};
 const resource={id:1,x:-4,z:-4,available:true,respawn:0};
 const json=(res:import('node:http').ServerResponse,status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Allow-Methods':'GET, POST, OPTIONS','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
@@ -51,18 +52,20 @@ wss.on('connection',socket=>{let p:Player|undefined;let joining=false;const time
    const now=Date.now();if(now-(lastChat.get(p.id)||0)<1000)return notice(p,'채팅은 1초에 한 번 보낼 수 있습니다.');
    lastChat.set(p.id,now);const message={type:'chat',name:p.name,text};for(const other of players.values())send(other,message);
   }
-  if(msg.type==='attack'||msg.type==='skill'){const now=Date.now();if(now<p.cooldown)return notice(p,'아직 사용할 수 없습니다.');if(msg.type==='skill'&&p.mp<10)return notice(p,'마나가 부족합니다.');if(!monster.alive||Math.hypot(p.x-monster.x,p.z-monster.z)>4)return notice(p,'공격할 몬스터가 근처에 없습니다.');p.cooldown=now+(msg.type==='skill'?2500:800);if(msg.type==='skill')p.mp-=10;const damage=msg.type==='skill'?25:(p.inventory.equipped?20:10);monster.hp-=damage;if(monster.hp<=0){monster.hp=0;monster.alive=false;monster.respawn=now+8000;p.xp+=20;while(p.xp>=p.level*XP_PER_LEVEL){p.xp-=p.level*XP_PER_LEVEL;p.level++;notice(p,`레벨 ${p.level} 달성!`);}notice(p,'몬스터 처치: 경험치 20');}else notice(p,'공격 명중: 피해 '+damage);void save(p);}
+  if(msg.type==='escape'){const now=Date.now();if(now-(lastEscape.get(p.id)||0)<60000)return notice(p,'탈출은 60초에 한 번 사용할 수 있습니다.');lastEscape.set(p.id,now);p.x=0;p.z=0;p.dx=0;p.dz=0;notice(p,'시작 지점으로 이동했습니다.');void save(p);}
+  if(msg.type==='emote'){const now=Date.now();if(now-(lastChat.get(p.id)||0)<1000)return notice(p,'잠시 후 다시 감정 표현을 사용하세요.');lastChat.set(p.id,now);for(const other of players.values())send(other,{type:'emote',id:p.id,name:p.name,emote:'wave'});}
+  if(msg.type==='attack'||msg.type==='skill'){const now=Date.now();if(now<p.cooldown)return notice(p,'아직 사용할 수 없습니다.');if(msg.type==='skill'&&p.mp<10)return notice(p,'마나가 부족합니다.');if(!monster.alive||Math.hypot(p.x-monster.x,p.z-monster.z)>4)return notice(p,'공격할 몬스터가 근처에 없습니다.');p.cooldown=now+(msg.type==='skill'?2500:800);if(msg.type==='skill')p.mp-=10;const damage=msg.type==='skill'?25:(p.inventory.equipped?20:10);monster.hp-=damage;if(monster.hp<=0){monster.hp=0;monster.alive=false;monster.respawn=now+8000;p.xp+=20;while(p.xp>=p.level*XP_PER_LEVEL){p.xp-=p.level*XP_PER_LEVEL;p.level++;notice(p,`레벨 ${p.level} 달성!`);}notice(p,'몬스터 처치: 피해 '+damage+', 경험치 20 · 현재 레벨 '+p.level);}else notice(p,'공격 명중: 피해 '+damage);void save(p);}
   if(msg.type==='gather'){if(!resource.available||Math.hypot(p.x-resource.x,p.z-resource.z)>3)return notice(p,'채집할 나무가 근처에 없거나 재생 중입니다.');resource.available=false;resource.respawn=Date.now()+10000;p.inventory.wood++;notice(p,'나무 +1');void save(p);}
   if(msg.type==='craft'){if(msg.recipe!=='wood_sword')return notice(p,'제작법을 선택하세요.');if(p.inventory.wood<2)return notice(p,'제작에는 나무 2개가 필요합니다.');p.inventory.wood-=2;p.inventory.sword++;notice(p,'나무 검 제작 완료');void save(p);}
   if(msg.type==='equip'){if(p.inventory.sword<1)return notice(p,'착용할 나무 검이 없습니다.');p.inventory.equipped=!p.inventory.equipped;notice(p,p.inventory.equipped?'나무 검 착용':'나무 검 해제');void save(p);}
  }catch(e){console.error(e);socket.close(1003,'Invalid message');}});
- socket.on('close',()=>{clearTimeout(timeout);if(p&&players.get(p.id)===p){players.delete(p.id);lastChat.delete(p.id);void save(p);}});
+ socket.on('close',()=>{clearTimeout(timeout);if(p&&players.get(p.id)===p){players.delete(p.id);lastChat.delete(p.id);lastEscape.delete(p.id);void save(p);}});
 });
 setInterval(()=>{const now=Date.now();if(!monster.alive&&now>=monster.respawn){monster.alive=true;monster.hp=monster.maxHp;}if(!resource.available&&now>=resource.respawn)resource.available=true;
  for(const p of players.values()){if(now-p.lastInput>500)p.dx=p.dz=0;const x=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.x+p.dx*.2)),z=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,p.z+p.dz*.2));if(Math.hypot(x-OBSTACLE.x,z-OBSTACLE.z)>OBSTACLE.radius){p.x=x;p.z=z;}}
  if(monster.alive&&now-monster.lastAttack>2000){const target=[...players.values()].find(p=>Math.hypot(p.x-monster.x,p.z-monster.z)<2);if(target){monster.lastAttack=now;target.hp-=15;if(target.hp<=0){target.hp=MAX_HP;target.mp=MAX_MP;target.x=0;target.z=0;notice(target,'쓰러져서 시작 지점에서 부활했습니다.');}else notice(target,'몬스터에게 피해 15를 입었습니다.');void save(target);}}
 },50);
-setInterval(()=>{for(const p of players.values()){p.mp=Math.min(MAX_MP,p.mp+1);} },3000);
+setInterval(()=>{for(const p of players.values()){if(p.mp<MAX_MP){p.mp=Math.min(MAX_MP,p.mp+1);send(p,{type:'recovery',resource:'mp',amount:1});}} },3000);
 setInterval(()=>{const state=JSON.stringify({type:'state',players:[...players.values()].map(({id,name,x,z,level,xp,hp,mp,inventory,cooldown})=>({id,name,x,z,level,xp,hp,mp,inventory,cooldownRemaining:Math.max(0,cooldown-Date.now())})),monster,resource:{...resource,remaining:Math.max(0,resource.respawn-Date.now())}});for(const p of players.values())if(p.socket.readyState===WebSocket.OPEN)p.socket.send(state);},100);
 setInterval(()=>{for(const p of players.values())void save(p);},15000);
 server.listen(port,host,()=>console.log(`Server: http://${host}:${port} (${process.env.DATABASE_URL?'PostgreSQL':'local PGlite'})`));
